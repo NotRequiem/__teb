@@ -1,26 +1,87 @@
 ﻿#include <stdio.h>
 #include "struct.h"
 
-/*
-static void GuidToString(const GUID* guid, char** str) {
-    int bufferSize = snprintf(NULL, 0, "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-        guid->Data1, guid->Data2, guid->Data3,
-        guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
-        guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 
-    *str = (char*)malloc(bufferSize + 1);
+typedef struct _THREAD_BASIC_INFORMATION {
+    NTSTATUS  ExitStatus;
+    PVOID     TebBaseAddress;
+    CLIENT_ID ClientId;
+    ULONG_PTR AffinityMask;
+    LONG      Priority;
+    LONG      BasePriority;
+} THREAD_BASIC_INFORMATION, * PTHREAD_BASIC_INFORMATION;
 
-    if (*str != NULL) {
-        sprintf_s(*str, bufferSize + 1, "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-            guid->Data1, guid->Data2, guid->Data3,
-            guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
-            guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
-    }
-    else {
-        printf("Memory allocation failed.\n");
-    }
-}
-*/
+typedef enum _THREADINFOCLASS {
+    ThreadBasicInformation = 0x00,
+    ThreadTimes = 0x01,
+    ThreadPriority = 0x02,
+    ThreadBasePriority = 0x03,
+    ThreadAffinityMask = 0x04,
+    ThreadImpersonationToken = 0x05,
+    ThreadDescriptorTableEntry = 0x06,
+    ThreadEnableAlignmentFaultFixup = 0x07,
+    ThreadEventPair = 0x08,
+    ThreadQuerySetWin32StartAddress = 0x09,
+    ThreadZeroTlsCell = 0x0A,
+    ThreadPerformanceCount = 0x0B,
+    ThreadAmILastThread = 0x0C,
+    ThreadIdealProcessor = 0x0D,
+    ThreadPriorityBoost = 0x0E,
+    ThreadSetTlsArrayAddress = 0x0F,
+    ThreadIsIoPending = 0x10,
+    ThreadHideFromDebugger = 0x11,
+    ThreadBreakOnTermination = 0x12,
+    ThreadSwitchLegacyState = 0x13,
+    ThreadIsTerminated = 0x14,
+    ThreadLastSystemCall = 0x15,
+    ThreadIoPriority = 0x16,
+    ThreadCycleTime = 0x17,
+    ThreadPagePriority = 0x18,
+    ThreadActualBasePriority = 0x19,
+    ThreadTebInformation = 0x1A,
+    ThreadCSwitchMon = 0x1B,
+    ThreadCSwitchPmu = 0x1C,
+    ThreadWow64Context = 0x1D,
+    ThreadGroupInformation = 0x1E,
+    ThreadUmsInformation = 0x1F,
+    ThreadCounterProfiling = 0x20,
+    ThreadIdealProcessorEx = 0x21,
+    ThreadCpuAccountingInformation = 0x22,
+    ThreadSuspendCount = 0x23,
+    ThreadHeterogeneousCpuPolicy = 0x24,
+    ThreadContainerId = 0x25,
+    ThreadNameInformation = 0x26,
+    ThreadSelectedCpuSets = 0x27,
+    ThreadSystemThreadInformation = 0x28,
+    ThreadActualGroupAffinity = 0x29,
+    MaxThreadInfoClass
+} THREADINFOCLASS;
+
+typedef NTSTATUS(WINAPI* PNT_QUERY_INFORMATION_THREAD)(
+    HANDLE ThreadHandle,
+    THREADINFOCLASS ThreadInformationClass,
+    PVOID ThreadInformation,
+    ULONG ThreadInformationLength,
+    PULONG ReturnLength
+    );
+
+// static void GuidToString(const GUID* guid, char** str) {
+//     int bufferSize = snprintf(NULL, 0, "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+//         guid->Data1, guid->Data2, guid->Data3,
+//         guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
+//         guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+//     *str = (char*)malloc(bufferSize + 1);
+//     if (*str != NULL) {
+//         sprintf_s(*str, bufferSize + 1, "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+//             guid->Data1, guid->Data2, guid->Data3,
+//             guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
+//             guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+//     }
+//     else {
+//         printf("Memory allocation failed.\n");
+//     }
+// }
 
 void GuidToString(const GUID* guid, char* str) {
     sprintf_s(str, 39, "{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
@@ -102,7 +163,6 @@ void printTEBFields(PTEB pTEB) {
     }
     printf("\n");
     printf("TxFsContext: %lu\n", pTEB->TxFsContext);
-
     printf("UnalignedLoadStoreExceptions: %d\n", pTEB->UnalignedLoadStoreExceptions);
 #endif
     printf("GdiTebBatch: %p\n", &pTEB->GdiTebBatch);
@@ -243,9 +303,7 @@ void printTEBFields(PTEB pTEB) {
     printf("ReservedForWdf: %p\n", pTEB->ReservedForWdf);
     printf("ReservedForCrt: %llu\n", pTEB->ReservedForCrt);
     WCHAR guidString[39];
-
     int result = StringFromGUID2(&pTEB->EffectiveContainerId, guidString, sizeof(guidString) / sizeof(WCHAR));
-
     if (result > 0) {
         wprintf(L"EffectiveContainerId: %s\n", guidString);
     }
@@ -255,9 +313,67 @@ void printTEBFields(PTEB pTEB) {
     else {
         printf("Failed to convert GUID to string: Unknown error.\n");
     }
-
     printf("SpinCallCount: %lu\n", pTEB->SpinCallCount);
     printf("ExtendedFeatureDisableMask: %llu\n", pTEB->ExtendedFeatureDisableMask);
+}
+
+void EnumerateThreads()
+{
+    HMODULE hNtdll = LoadLibraryA("ntdll.dll");
+    if (hNtdll == NULL) {
+        printf("Failed to load ntdll.dll\n");
+        return;
+    }
+
+    PNT_QUERY_INFORMATION_THREAD pNtQueryInformationThread = (PNT_QUERY_INFORMATION_THREAD)GetProcAddress(hNtdll, "NtQueryInformationThread");
+    if (pNtQueryInformationThread == NULL) {
+        printf("Failed to get address of NtQueryInformationThread\n");
+        FreeLibrary(hNtdll);
+        return;
+    }
+
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) {
+        printf("Failed to create snapshot of threads\n");
+        FreeLibrary(hNtdll);
+        return;
+    }
+
+    THREADENTRY32 te = { 0 };
+    te.dwSize = sizeof(THREADENTRY32);
+    if (!Thread32First(hSnapshot, &te)) {
+        CloseHandle(hSnapshot);
+        FreeLibrary(hNtdll);
+        return;
+    }
+
+    do {
+        if (te.dwSize >= FIELD_OFFSET(THREADENTRY32, th32OwnerProcessID) + sizeof(DWORD) &&
+            te.th32OwnerProcessID == GetCurrentProcessId()) {
+            HANDLE hThread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
+            if (hThread != NULL) {
+                THREAD_BASIC_INFORMATION tbi = { 0 };
+                NTSTATUS status = pNtQueryInformationThread(hThread, ThreadBasicInformation, &tbi, sizeof(tbi), NULL);
+                if (NT_SUCCESS(status)) {
+                    printf("\n");
+                    printf("------------------------------------------------------\n");
+                    printf("Analyzing Thread id %lu with TEB Address 0x%p\n", te.th32ThreadID, tbi.TebBaseAddress);
+                    printf("------------------------------------------------------\n");
+                    printf("\n");
+
+                    printTEBFields((PTEB)tbi.TebBaseAddress);
+                }
+                else {
+                    printf("Failed to query information for thread %lu\n", te.th32ThreadID);
+                }
+                CloseHandle(hThread);
+            }
+        }
+        te.dwSize = sizeof(THREADENTRY32);
+    } while (Thread32Next(hSnapshot, &te));
+
+    CloseHandle(hSnapshot);
+    FreeLibrary(hNtdll);
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved) {
@@ -271,9 +387,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
         FILE* pConsoleStream;
         freopen_s(&pConsoleStream, "CONOUT$", "w", stdout);
 
-        PTEB pTEB = NtCurrentTeb();
-
-        printTEBFields(pTEB);
+        EnumerateThreads();
 
         break;
     case DLL_THREAD_ATTACH:
